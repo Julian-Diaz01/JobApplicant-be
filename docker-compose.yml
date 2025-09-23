@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  app:
+    build: .
+    ports:
+      - "1010:1010"
+    environment:
+      - NODE_ENV=production
+      - OLLAMA_URL=http://ollama:11434/api/generate
+      - OLLAMA_MODEL=llama3.2
+    volumes:
+      - ./out:/app/out
+    depends_on:
+      - redis
+      - ollama
+
+  worker:
+    build: .
+    command: ["node", "out/worker.js"]
+    environment:
+      - NODE_ENV=production
+      - OLLAMA_URL=http://ollama:11434/api/generate
+      - OLLAMA_MODEL=llama3.2
+    volumes:
+      - ./out:/app/out
+    depends_on:
+      - redis
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+
+volumes:
+  redis_data:
+  ollama_data:
