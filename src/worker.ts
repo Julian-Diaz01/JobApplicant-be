@@ -1,5 +1,6 @@
 // Simplified Cover Letter Generator - Redis Worker
 
+import 'dotenv/config'
 import { Worker, Job } from 'bullmq'
 import IORedis from 'ioredis'
 import fetch from 'node-fetch'
@@ -9,6 +10,7 @@ import puppeteer from 'puppeteer'
 import fs from 'fs'
 import path from 'path'
 import { extractTextFromPDF, cleanupFile } from './cvProcessor'
+import { JobDatabase } from './supabase'
 
 // Redis connection
 const connection = new IORedis({
@@ -185,6 +187,24 @@ RULES:
     await job.updateProgress(100)
     await job.updateData({ step: 'Completed!' })
 
+    // Save cover letter data to Supabase
+    const coverLetterData = {
+      coverLetter: parsed.coverLetter,
+      generatedAt: new Date().toISOString(),
+      jobUrl: jobUrl,
+      jobText: jobText
+    }
+
+    // Update Supabase with cover letter data and PDF URL
+    await JobDatabase.updateJob(jobId, {
+      cover_letter_json: coverLetterData,
+      cover_letter_pdf_url: `/download/cover/${jobId}`,
+      status: 'completed',
+      progress: 100,
+      current_step: 'Completed!',
+      completed_at: new Date().toISOString()
+    })
+
     // Clean up the uploaded file
     cleanupFile(filePath)
 
@@ -192,7 +212,8 @@ RULES:
     return { 
       cover: coverPdfPath,
       jobId,
-      status: 'completed'
+      status: 'completed',
+      coverLetterData: coverLetterData
     }
 
   } catch (error) {

@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import { Queue } from 'bullmq'
@@ -5,6 +6,7 @@ import IORedis from 'ioredis'
 import fs from 'fs'
 import path from 'path'
 import { uploadMiddleware } from './cvProcessor'
+import { JobDatabase, JobRecord } from './supabase'
 
 const app = express();
 const PORT = process.env.PORT || 1010;
@@ -32,7 +34,7 @@ const queue = new Queue('generate', { connection })
 const jobStatus = new Map<string, any>()
 
 // Listen for job events to update status
-queue.on('progress', (job, progress) => {
+queue.on('progress', async (job, progress) => {
   const jobId = job.data.jobId
   if (jobStatus.has(jobId)) {
     const currentStatus = jobStatus.get(jobId)
@@ -43,9 +45,16 @@ queue.on('progress', (job, progress) => {
       step: job.data.step || 'Processing...'
     })
   }
+  
+  // Update Supabase
+  await JobDatabase.updateJob(jobId, {
+    status: 'processing',
+    progress: Number(progress),
+    current_step: job.data.step || 'Processing...'
+  })
 })
 
-queue.on('completed' as any, (job: any) => {
+queue.on('completed' as any, async (job: any) => {
   const jobId = job.data.jobId
   if (jobStatus.has(jobId)) {
     const currentStatus = jobStatus.get(jobId)
@@ -57,9 +66,17 @@ queue.on('completed' as any, (job: any) => {
       completedAt: new Date().toISOString()
     })
   }
+  
+  // Update Supabase
+  await JobDatabase.updateJob(jobId, {
+    status: 'completed',
+    progress: 100,
+    current_step: 'Completed!',
+    completed_at: new Date().toISOString()
+  })
 })
 
-queue.on('failed' as any, (job: any, err: any) => {
+queue.on('failed' as any, async (job: any, err: any) => {
   const jobId = job.data.jobId
   if (jobStatus.has(jobId)) {
     const currentStatus = jobStatus.get(jobId)
@@ -70,11 +87,52 @@ queue.on('failed' as any, (job: any, err: any) => {
       step: 'Failed'
     })
   }
+  
+  // Update Supabase
+  await JobDatabase.updateJob(jobId, {
+    status: 'failed',
+    error_message: err.message,
+    current_step: 'Failed'
+  })
 })
 
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'Job Applicant API is running (Redis mode)' });
 });
+
+// Get all jobs from Supabase
+app.get('/jobs', async (req, res) => {
+  try {
+    const jobs = await JobDatabase.getAllJobs()
+    res.json({
+      success: true,
+      jobs: jobs
+    })
+  } catch (error) {
+    console.error('Error getting jobs:', error)
+    res.status(500).json({ error: 'Failed to get jobs' })
+  }
+})
+
+// Get specific job from Supabase
+app.get('/jobs/:jobId', async (req, res) => {
+  try {
+    const jobId = req.params.jobId
+    const job = await JobDatabase.getJob(jobId)
+    
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' })
+    }
+    
+    res.json({
+      success: true,
+      job: job
+    })
+  } catch (error) {
+    console.error('Error getting job:', error)
+    res.status(500).json({ error: 'Failed to get job' })
+  }
+})
 
 // Upload CV and Job Offer - Process Together
 app.post('/process', (req, res) => {
@@ -98,6 +156,16 @@ app.post('/process', (req, res) => {
     const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
     try {
+      // Extract company name from job description or URL
+      let companyName = 'Unknown Company'
+      if (jobText) {
+        // Try to extract company name from job description
+        const companyMatch = jobText.match(/(?:at|@|Company:|Employer:)\s*([A-Za-z\s&.,-]+)/i)
+        if (companyMatch) {
+          companyName = companyMatch[1].trim()
+        }
+      }
+
       // Store initial job status immediately
       jobStatus.set(jobId, {
         id: jobId,
@@ -106,6 +174,20 @@ app.post('/process', (req, res) => {
         step: 'Uploading files...',
         createdAt: new Date().toISOString()
       })
+
+      // Save job to Supabase
+      const jobRecord: Partial<JobRecord> = {
+        job_id: jobId,
+        company_name: companyName,
+        job_url: jobUrl,
+        job_description: jobText,
+        cv_file_name: req.file.originalname,
+        status: 'pending',
+        progress: 0,
+        current_step: 'Uploading files...'
+      }
+
+      await JobDatabase.createJob(jobRecord)
 
       // Add to Redis queue for processing (worker will handle PDF extraction and AI processing)
       const payload = { 

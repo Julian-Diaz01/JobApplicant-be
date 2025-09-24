@@ -16,10 +16,12 @@
   "type": "commonjs",
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
+    "@supabase/supabase-js": "^2.57.4",
     "@types/cors": "^2.8.19",
     "@types/multer": "^2.0.0",
     "bullmq": "^5.58.7",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
     "express": "^5.1.0",
     "handlebars": "^4.7.8",
     "ioredis": "^5.7.0",
