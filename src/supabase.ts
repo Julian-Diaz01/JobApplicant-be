@@ -28,6 +28,8 @@ export interface JobRecord {
   current_step?: string
   cover_letter_json?: any
   cover_letter_pdf_url?: string
+  random_question?: string
+  random_answer?: string
   error_message?: string
   created_at?: string
   updated_at?: string

@@ -15,6 +15,8 @@ CREATE TABLE jobs (
   current_step TEXT,
   cover_letter_json JSONB, -- Store the AI-generated cover letter data
   cover_letter_pdf_url TEXT, -- URL to the generated PDF
+  random_question TEXT, -- The random question asked
+  random_answer TEXT, -- The answer to the random question
   error_message TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

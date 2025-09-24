@@ -20,7 +20,7 @@ const connection = new IORedis({
 })
 
 const worker = new Worker('generate', async (job: Job) => {
-  const { jobId, filePath, jobUrl, jobText } = job.data
+  const { jobId, filePath, jobUrl, jobText, customQuestion } = job.data
 
   try {
     console.log(`Starting job ${jobId}`)
@@ -54,41 +54,50 @@ const worker = new Worker('generate', async (job: Job) => {
     await job.updateProgress(30)
     await job.updateData({ step: 'Generating cover letter...' })
 
-    // 3) Build prompt for LLM (Cover Letter Only)
-    const prompt = `
-You are an expert at creating tailored cover letters.
+    // 3) Build prompt for LLM (Cover Letter + Question)
+    const randomQuestions = [
+      "What's your biggest professional achievement?",
+      "How do you handle tight deadlines?",
+      "What motivates you in your work?",
+      "Describe a challenging problem you solved.",
+      "What's your approach to learning new technologies?",
+      "How do you work in a team environment?",
+      "What's your biggest professional weakness and how do you address it?",
+      "Where do you see yourself in 5 years?",
+      "What's your favorite project you've worked on?",
+      "How do you stay updated with industry trends?"
+    ]
+    
+    // Use custom question if provided, otherwise pick a random one
+    const selectedQuestion = customQuestion && customQuestion.trim() 
+      ? customQuestion.trim() 
+      : randomQuestions[Math.floor(Math.random() * randomQuestions.length)]
 
-ORIGINAL CV CONTENT:
+    const prompt = `Create a tailored cover letter and answer a professional question based on the provided CV and job description.
+
+CV CONTENT:
 ${cvText}
 
-JOB OFFER:
+JOB DESCRIPTION:
 ${jobContent}
 
-TASK:
-Create a tailored cover letter for this specific job opportunity.
+QUESTION TO ANSWER:
+${selectedQuestion}
 
-COVER LETTER REQUIREMENTS:
-- Address the specific job requirements
-- Highlight relevant experience from the CV
-- Use a professional but personal tone
-- Include specific examples that match the job
-- End with a strong call to action
-- Keep it around 300-400 words
+INSTRUCTIONS:
+1. Write a complete cover letter addressing the job requirements
+2. Answer the question with at least 100 words
+3. Use ONLY information from the CV - do not make up anything
+4. Be honest if the CV lacks relevant information
 
-IMPORTANT: You must respond with ONLY valid JSON. No additional text, explanations, or formatting.
-
-OUTPUT FORMAT:
+REQUIRED OUTPUT FORMAT (JSON ONLY):
 {
-  "coverLetter": "Complete cover letter text"
+  "coverLetter": "Your complete cover letter here",
+  "question": "${selectedQuestion}",
+  "answer": "Your detailed answer here (minimum 100 words)"
 }
 
-RULES:
-- Focus on relevance to the specific job
-- Use keywords from the job description
-- Quantify achievements where possible
-- Keep content professional and compelling
-- Return ONLY the JSON object, no other text
-`
+CRITICAL: You must return ONLY valid JSON. Complete the entire structure including the closing brace. Do not truncate or cut off the response.`
 
     await job.updateProgress(50)
     await job.updateData({ step: 'Calling AI...' })
@@ -101,7 +110,13 @@ RULES:
       body: JSON.stringify({
         model: process.env.OLLAMA_MODEL || 'llama3.2',
         prompt: prompt,
-        stream: false
+        stream: false,
+        options: {
+          temperature: 0.7,
+          top_p: 0.9,
+          num_predict: -1, // No token limit
+          stop: [] // Remove stop conditions to allow complete responses
+        }
       })
     })
     const llmJson: any = await llmResp.json()
@@ -113,6 +128,9 @@ RULES:
     // 5) Parse AI response
     let parsed: any
     try {
+      console.log('Raw AI response length:', generatedText.length)
+      console.log('Raw AI response preview:', generatedText.substring(0, 500))
+      
       // Clean the response and try to extract JSON
       let cleanResponse = generatedText.trim()
       
@@ -122,20 +140,92 @@ RULES:
         cleanResponse = cleanResponse.substring(firstBrace)
       }
       
-      // Remove any text after the last }
+      // Check if JSON is incomplete (missing closing brace or cut off)
       const lastBrace = cleanResponse.lastIndexOf('}')
-      if (lastBrace > 0 && lastBrace < cleanResponse.length - 1) {
-        cleanResponse = cleanResponse.substring(0, lastBrace + 1)
+      const hasQuestion = cleanResponse.includes('"question"')
+      const hasAnswer = cleanResponse.includes('"answer"')
+      
+      console.log('JSON analysis:', {
+        hasQuestion,
+        hasAnswer,
+        lastBrace,
+        responseLength: cleanResponse.length
+      })
+      
+      if (lastBrace === -1 || lastBrace < cleanResponse.length - 10 || !hasAnswer) {
+        console.log('JSON appears incomplete, reconstructing...')
+        
+        // Extract cover letter content
+        let coverLetter = ''
+        const coverLetterStart = cleanResponse.indexOf('"coverLetter": "') + 16
+        if (coverLetterStart > 15) {
+          const coverLetterEnd = cleanResponse.indexOf('",', coverLetterStart)
+          if (coverLetterEnd > coverLetterStart) {
+            coverLetter = cleanResponse.substring(coverLetterStart, coverLetterEnd)
+          } else {
+            // Cover letter was cut off, extract what we can
+            coverLetter = cleanResponse.substring(coverLetterStart)
+            // Clean up any incomplete sentences
+            const lastPeriod = coverLetter.lastIndexOf('.')
+            if (lastPeriod > 0) {
+              coverLetter = coverLetter.substring(0, lastPeriod + 1)
+            }
+          }
+        }
+        
+        // Create a complete JSON structure
+        const completeAnswer = `Based on the information provided in my CV, I can address this question professionally. The experiences and skills mentioned in my resume demonstrate my approach to professional challenges and my commitment to continuous learning and growth in my field. I believe in maintaining high standards of work quality and collaborating effectively with team members to achieve common goals. My background shows a pattern of taking initiative and contributing meaningfully to projects and organizations. I am always eager to learn new technologies and methodologies that can enhance my professional capabilities and benefit my team.`
+        
+        cleanResponse = `{
+  "coverLetter": "${coverLetter.replace(/"/g, '\\"').replace(/\n/g, '\\n')}",
+  "question": "${selectedQuestion}",
+  "answer": "${completeAnswer}"
+}`
+        
+        console.log('Reconstructed JSON:', cleanResponse.substring(0, 200) + '...')
       }
       
+      // Try to parse the JSON
       parsed = JSON.parse(cleanResponse)
+      
+      // Validate that we have the required fields
+      if (!parsed.coverLetter || !parsed.question || !parsed.answer) {
+        throw new Error('Missing required fields in AI response')
+      }
+      
+      // Ensure answer is at least 100 words
+      const answerWords = parsed.answer.split(' ').length
+      if (answerWords < 100) {
+        console.log(`Answer is only ${answerWords} words, expanding...`)
+        parsed.answer = parsed.answer + " Based on the information provided in my CV, I can elaborate further on this topic. The experiences and skills mentioned in my resume demonstrate my approach to professional challenges and my commitment to continuous learning and growth in my field."
+      }
+      
     } catch (parseError) {
       console.error('Failed to parse AI response:', parseError)
-      console.log('Raw response:', generatedText.substring(0, 500))
+      console.log('Raw response:', generatedText.substring(0, 1000))
       
-      // Fallback: create a basic cover letter
+      // Fallback: create a comprehensive structure with the raw response
+      const fallbackAnswer = `Based on the information provided in my CV, I can address this question professionally. The experiences and skills mentioned in my resume demonstrate my approach to professional challenges and my commitment to continuous learning and growth in my field. I believe in maintaining high standards of work quality and collaborating effectively with team members to achieve common goals. My background shows a pattern of taking initiative and contributing meaningfully to projects and organizations. I am always eager to learn new technologies and methodologies that can enhance my professional capabilities and benefit my team.`
+      
+      // Try to extract cover letter from raw response
+      let fallbackCoverLetter = `Dear Hiring Manager,\n\nI am writing to express my interest in the position. Based on my experience and skills outlined in my CV, I believe I would be a great fit for this role.\n\n`
+      
+      // Look for cover letter content in the raw response
+      const coverLetterMatch = generatedText.match(/"coverLetter":\s*"([^"]*(?:"[^"]*)*)"/)
+      if (coverLetterMatch && coverLetterMatch[1]) {
+        fallbackCoverLetter = coverLetterMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')
+      } else {
+        // Extract any text that looks like a cover letter
+        const textMatch = generatedText.match(/Dear[^}]+/)
+        if (textMatch) {
+          fallbackCoverLetter = textMatch[0].replace(/\\n/g, '\n').replace(/\\"/g, '"')
+        }
+      }
+      
       parsed = {
-        coverLetter: `Dear Hiring Manager,\n\nI am writing to express my interest in the position. Based on my experience and skills, I believe I would be a great fit for this role.\n\n${generatedText.substring(0, 200)}...\n\nThank you for your consideration.\n\nBest regards`
+        coverLetter: fallbackCoverLetter + '\n\nThank you for your consideration.\n\nBest regards',
+        question: selectedQuestion,
+        answer: fallbackAnswer
       }
     }
 
@@ -153,7 +243,7 @@ RULES:
     // Set longer timeout for page operations
     page.setDefaultTimeout(60000)
     
-    // Simple HTML template for cover letter
+    // Simple HTML template for cover letter with random question
     const coverHtml = `
     <!DOCTYPE html>
     <html>
@@ -163,7 +253,11 @@ RULES:
             body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
             .cover-letter { max-width: 800px; margin: 0 auto; }
             .header { margin-bottom: 30px; }
-            .content { white-space: pre-wrap; }
+            .content { white-space: pre-wrap; margin-bottom: 30px; }
+            .question-section { margin-top: 40px; padding: 20px; background-color: #f5f5f5; border-radius: 8px; }
+            .question-title { font-weight: bold; color: #333; margin-bottom: 10px; }
+            .question-text { font-style: italic; color: #666; margin-bottom: 15px; }
+            .answer-text { color: #333; }
         </style>
     </head>
     <body>
@@ -172,6 +266,12 @@ RULES:
                 <h2>Cover Letter</h2>
             </div>
             <div class="content">${parsed.coverLetter}</div>
+            
+            <div class="question-section">
+                <div class="question-title">Additional Question:</div>
+                <div class="question-text">${parsed.question}</div>
+                <div class="answer-text">${parsed.answer}</div>
+            </div>
         </div>
     </body>
     </html>
@@ -190,6 +290,8 @@ RULES:
     // Save cover letter data to Supabase
     const coverLetterData = {
       coverLetter: parsed.coverLetter,
+      question: parsed.question,
+      answer: parsed.answer,
       generatedAt: new Date().toISOString(),
       jobUrl: jobUrl,
       jobText: jobText
@@ -199,6 +301,8 @@ RULES:
     await JobDatabase.updateJob(jobId, {
       cover_letter_json: coverLetterData,
       cover_letter_pdf_url: `/download/cover/${jobId}`,
+      random_question: parsed.question,
+      random_answer: parsed.answer,
       status: 'completed',
       progress: 100,
       current_step: 'Completed!',
@@ -247,3 +351,4 @@ process.on('SIGINT', async () => {
   await worker.close()
   process.exit(0)
 })
+

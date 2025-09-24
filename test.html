@@ -144,6 +144,14 @@
                 <textarea id="jobText" placeholder="Paste job description here if no URL provided..."></textarea>
             </div>
             
+            <div class="form-group">
+                <label for="customQuestion">Custom Question (Optional):</label>
+                <input type="text" id="customQuestion" placeholder="Enter a custom question to be answered in the cover letter...">
+                <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                    Leave empty to use a random professional question
+                </small>
+            </div>
+            
             <button type="submit" id="submitBtn">Process CV & Job Offer</button>
             <button type="button" id="cleanupBtn" disabled>Clean Up Files</button>
         </form>
@@ -282,6 +290,9 @@
             formData.append('cv', cvFile);
             if (jobUrl) formData.append('jobUrl', jobUrl);
             if (jobText) formData.append('jobText', jobText);
+            
+            const customQuestion = document.getElementById('customQuestion').value.trim();
+            if (customQuestion) formData.append('customQuestion', customQuestion);
 
             try {
                 const response = await fetch(`${API_BASE}/process`, {

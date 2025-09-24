@@ -146,7 +146,7 @@ app.post('/process', (req, res) => {
       return res.status(400).json({ error: 'No CV file uploaded' })
     }
 
-    const { jobUrl, jobText } = req.body
+    const { jobUrl, jobText, customQuestion } = req.body
     
     if (!jobUrl && !jobText) {
       return res.status(400).json({ error: 'Either jobUrl or jobText is required' })
@@ -194,7 +194,8 @@ app.post('/process', (req, res) => {
         jobId,
         filePath,  // Pass file path instead of extracted text
         jobUrl, 
-        jobText
+        jobText,
+        customQuestion  // Pass custom question to worker
       }
       
       await queue.add('generate-cv', payload, { 
