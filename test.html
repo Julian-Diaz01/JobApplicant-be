@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Applicant API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="file"], input[type="text"], textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.processing {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .status.completed {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .download-links {
+            margin-top: 20px;
+        }
+        .download-links a {
+            display: inline-block;
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .download-links a:hover {
+            background-color: #218838;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #007bff;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Job Applicant API Test</h1>
+        
+        <form id="uploadForm">
+            <div class="form-group">
+                <label for="cvFile">Upload CV (PDF):</label>
+                <input type="file" id="cvFile" accept=".pdf" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="jobUrl">Job URL (optional):</label>
+                <input type="text" id="jobUrl" placeholder="https://example.com/job-posting">
+            </div>
+            
+            <div class="form-group">
+                <label for="jobText">Job Description (optional):</label>
+                <textarea id="jobText" placeholder="Paste job description here if no URL provided..."></textarea>
+            </div>
+            
+            <button type="submit" id="submitBtn">Process CV & Job Offer</button>
+            <button type="button" id="cleanupBtn" disabled>Clean Up Files</button>
+        </form>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        <div id="progressBar" class="progress-bar" style="display: none;">
+            <div id="progressFill" class="progress-fill"></div>
+        </div>
+        
+        <div id="downloadLinks" class="download-links" style="display: none;"></div>
+        
+        <div id="log" class="log" style="display: none;"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:1010';
+        let currentJobId = null;
+        let statusCheckInterval = null;
+
+        const form = document.getElementById('uploadForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const cleanupBtn = document.getElementById('cleanupBtn');
+        const statusDiv = document.getElementById('status');
+        const progressBar = document.getElementById('progressBar');
+        const progressFill = document.getElementById('progressFill');
+        const downloadLinks = document.getElementById('downloadLinks');
+        const log = document.getElementById('log');
+
+        function logMessage(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            log.innerHTML += `[${timestamp}] ${message}\n`;
+            log.scrollTop = log.scrollHeight;
+            log.style.display = 'block';
+        }
+
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            statusDiv.style.display = 'block';
+        }
+
+        function updateProgress(progress) {
+            progressFill.style.width = `${progress}%`;
+            progressBar.style.display = 'block';
+        }
+
+        function hideProgress() {
+            progressBar.style.display = 'none';
+        }
+
+        function showDownloadLinks(jobId) {
+            downloadLinks.innerHTML = `
+                <a href="${API_BASE}/download/cover/${jobId}" target="_blank">📄 Download Cover Letter</a>
+            `;
+            downloadLinks.style.display = 'block';
+        }
+
+        function checkJobStatus(jobId) {
+            fetch(`${API_BASE}/status/${jobId}`, {
+                method: 'GET',
+                mode: 'cors',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    const stepText = data.step ? ` - ${data.step}` : '';
+                    logMessage(`Status check: ${data.status} (${data.progress || 0}%)${stepText}`);
+                    
+                    if (data.status === 'processing' || data.status === 'queued') {
+                        updateProgress(data.progress || 0);
+                        showStatus(`Processing... ${data.progress || 0}%${stepText}`, 'processing');
+                    } else if (data.status === 'completed') {
+                        clearInterval(statusCheckInterval);
+                        hideProgress();
+                        showStatus('✅ Processing completed!', 'completed');
+                        showDownloadLinks(jobId);
+                        cleanupBtn.disabled = false;
+                        logMessage('Job completed successfully!');
+                    } else if (data.status === 'failed') {
+                        clearInterval(statusCheckInterval);
+                        hideProgress();
+                        showStatus(`❌ Processing failed: ${data.error || 'Unknown error'}`, 'error');
+                        logMessage(`Job failed: ${data.error || 'Unknown error'}`);
+                    }
+                })
+                .catch(error => {
+                    logMessage(`Error checking status: ${error.message}`);
+                });
+        }
+
+        function cleanupJob(jobId) {
+            fetch(`${API_BASE}/cleanup/${jobId}`, { 
+                method: 'DELETE',
+                mode: 'cors',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    showStatus('🧹 Files cleaned up successfully', 'completed');
+                    downloadLinks.style.display = 'none';
+                    cleanupBtn.disabled = true;
+                    currentJobId = null;
+                    logMessage('Job and files cleaned up');
+                })
+                .catch(error => {
+                    logMessage(`Error cleaning up: ${error.message}`);
+                });
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const cvFile = document.getElementById('cvFile').files[0];
+            const jobUrl = document.getElementById('jobUrl').value.trim();
+            const jobText = document.getElementById('jobText').value.trim();
+
+            if (!cvFile) {
+                alert('Please select a CV file');
+                return;
+            }
+
+            if (!jobUrl && !jobText) {
+                alert('Please provide either a job URL or job description');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            showStatus('📤 Uploading CV and submitting for processing...', 'processing');
+            logMessage('Starting upload...');
+
+            const formData = new FormData();
+            formData.append('cv', cvFile);
+            if (jobUrl) formData.append('jobUrl', jobUrl);
+            if (jobText) formData.append('jobText', jobText);
+
+            try {
+                const response = await fetch(`${API_BASE}/process`, {
+                    method: 'POST',
+                    mode: 'cors',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentJobId = data.jobId;
+                    showStatus('✅ Upload successful! Processing started...', 'processing');
+                    logMessage(`Job ID: ${data.jobId}`);
+                    
+                    // Start checking status every 2 seconds
+                    statusCheckInterval = setInterval(() => {
+                        checkJobStatus(data.jobId);
+                    }, 2000);
+                    
+                    // Check status immediately
+                    checkJobStatus(data.jobId);
+                } else {
+                    showStatus(`❌ Upload failed: ${data.error}`, 'error');
+                    logMessage(`Upload failed: ${data.error}`);
+                }
+            } catch (error) {
+                showStatus(`❌ Error: ${error.message}`, 'error');
+                logMessage(`Error: ${error.message}`);
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+
+        cleanupBtn.addEventListener('click', () => {
+            if (currentJobId) {
+                cleanupJob(currentJobId);
+            }
+        });
+
+        // Test API connection on page load
+        window.addEventListener('load', () => {
+            fetch(`${API_BASE}/health`, {
+                method: 'GET',
+                mode: 'cors',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    logMessage(`✅ API connected: ${data.message}`);
+                })
+                .catch(error => {
+                    logMessage(`❌ API connection failed: ${error.message}`);
+                    showStatus('❌ Cannot connect to API. Make sure the server is running on port 1010.', 'error');
+                });
+        });
+    </script>
+</body>
+</html>

@@ -2,10 +2,157 @@
 
 <!doctype html>
 <html>
-<head><meta charset="utf-8"><style>body{font-family: Arial; padding: 20px;}</style></head>
-<body>
-  <div style="max-width:700px;">
-    {{{coverLetter}}}
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cover Letter</title>
+  <style>
+    /* Print-friendly page margins */
+    @page { margin: 1in; }
+
+    /* Basic reset */
+    html,body{height:100%;margin:0;padding:0;font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial; color:#111}
+
+    /* Container centers document for screen viewing and keeps printable width */
+    .page {
+      max-width: 800px; /* ~6.7in wide for print */
+      margin: 32px auto;
+      padding: 40px 48px;
+      background: #fff;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+      border-radius: 8px;
+    }
+
+    /* Header (sender details) */
+    .header {
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:16px;
+      margin-bottom:28px;
+      flex-wrap:wrap;
+    }
+
+    .sender {
+      font-size:0.95rem;
+      line-height:1.45;
+    }
+
+    .meta {
+      text-align:right;
+      font-size:0.95rem;
+      line-height:1.45;
+    }
+
+    .recipient {
+      margin-top:18px;
+      font-size:0.95rem;
+      line-height:1.45;
+      white-space:pre-line; /* keeps newlines in addresses */
+    }
+
+    /* Body text */
+    .body {
+      margin-top:20px;
+      font-size:1rem;
+      line-height:1.6;
+      color:#1a1a1a;
+    }
+
+    .salutation {
+      margin-top:18px;
+      margin-bottom:12px;
+      font-weight:600;
+    }
+
+    .paragraph { margin-bottom:14px; }
+
+    /* Closing and signature */
+    .closing {
+      margin-top:22px;
+      margin-bottom:8px;
+    }
+
+    .signature {
+      display:block;
+      margin-top:8px;
+      height:72px;
+      object-fit:contain;
+    }
+
+    .sender-name { font-weight:700; }
+
+    /* Small helper for printing - avoid shadows */
+    @media print {
+      .page { box-shadow:none; border-radius:0; margin:0; padding:0.75in; }
+    }
+
+    /* Responsive tweaks */
+    @media (max-width:520px){
+      .page{padding:20px}
+      .meta{width:100%;text-align:left;margin-top:12px}
+    }
+  </style>
+</head><body>
+<div class="page" role="document">
+
+  <!-- Header: sender info on the left, date on the right -->
+  <header class="header">
+    <div class="sender">
+      {{#if sender.name}}<div class="sender-name">{{sender.name}}</div>{{/if}}
+      {{#if sender.title}}<div>{{sender.title}}</div>{{/if}}
+      {{#if sender.address}}<div>{{sender.address}}</div>{{/if}}
+      {{#if sender.email}}<div>{{sender.email}}</div>{{/if}}
+      {{#if sender.phone}}<div>{{sender.phone}}</div>{{/if}}
+    </div>
+
+    <div class="meta">
+      {{#if date}}<div>{{date}}</div>{{/if}}
+    </div>
+  </header>
+
+  <!-- Recipient block - keeps multi-line addresses -->
+  <section class="recipient">
+    {{#if recipient.name}}{{recipient.name}}<br>{{/if}}
+    {{#if recipient.company}}{{recipient.company}}<br>{{/if}}
+    {{#if recipient.address}}{{recipient.address}}<br>{{/if}}
+    {{#if recipient.city}}{{recipient.city}}{{#if recipient.postcode}}, {{recipient.postcode}}{{/if}}<br>{{/if}}
+  </section>
+
+  <!-- Salutation -->
+  <div class="salutation">
+    {{#if salutation}}{{salutation}}{{else}}Dear {{#if recipient.name}}{{recipient.name}}{{else}}Hiring Team{{/if}},{{/if}}
   </div>
+
+  <!-- Body: supports an array of paragraphs or a single block -->
+  <article class="body" aria-label="Cover letter body">
+    {{#if body}}
+      {{#if (isArray body)}}
+        {{#each body}}
+          <p class="paragraph">{{this}}</p>
+        {{/each}}
+      {{else}}
+        <p class="paragraph">{{body}}</p>
+      {{/if}}
+    {{/if}}
+
+    <!-- Optional: short example taken from CV (if provided) -->
+    {{#if example}}
+      <p class="paragraph"><strong>Example —</strong> {{example}}</p>
+    {{/if}}
+  </article>
+
+  <!-- Closing and signature -->
+  <footer>
+    <div class="closing">Sincerely,</div>
+    {{#if sender.signatureImage}}
+      <img src="{{sender.signatureImage}}" alt="Signature" class="signature" />
+    {{/if}}
+    <div class="sender-name">{{sender.name}}</div>
+    {{#if sender.title}}<div>{{sender.title}}</div>{{/if}}
+  </footer>
+
+</div>
+
 </body>
 </html>
