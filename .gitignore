@@ -80,6 +80,7 @@ jspm_packages/
 
 # Generated PDFs
 *.pdf
+/uploads
 
 # OS generated files
 .DS_Store

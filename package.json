@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node out/server.js",
     "dev": "ts-node src/server.ts",
+    "dev-worker": "ts-node src/worker.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -15,18 +16,24 @@
   "type": "commonjs",
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
+    "@types/cors": "^2.8.19",
+    "@types/multer": "^2.0.0",
     "bullmq": "^5.58.7",
+    "cors": "^2.8.5",
     "express": "^5.1.0",
     "handlebars": "^4.7.8",
     "ioredis": "^5.7.0",
     "jsdom": "^27.0.0",
+    "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
+    "pdf-parse": "^1.1.1",
     "puppeteer": "^24.22.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.3",
     "@types/jsdom": "^21.1.7",
     "@types/node": "^24.5.2",
+    "@types/pdf-parse": "^1.1.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
   }
