@@ -9,6 +9,7 @@ import { Readability } from '@mozilla/readability'
 import puppeteer from 'puppeteer'
 import fs from 'fs'
 import path from 'path'
+import handlebars from 'handlebars'
 import { extractTextFromPDF, cleanupFile } from './cvProcessor'
 import { JobDatabase } from './supabase'
 
@@ -18,6 +19,51 @@ const connection = new IORedis({
   port: 6379,
   maxRetriesPerRequest: null,
 })
+
+// Register Handlebars helper for array checking
+handlebars.registerHelper('isArray', function(value) {
+  return Array.isArray(value)
+})
+
+// Load the Handlebars template
+const templatePath = path.join(__dirname, '../templates/cover.hbs')
+const templateSource = fs.readFileSync(templatePath, 'utf8')
+const template = handlebars.compile(templateSource)
+
+// Function to extract sender information from CV text
+function extractSenderInfo(cvText: string) {
+  const sender: any = {}
+  
+  // Extract email
+  const emailMatch = cvText.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i)
+  if (emailMatch) {
+    sender.email = emailMatch[1]
+  }
+  
+  // Extract phone number
+  const phoneMatch = cvText.match(/(\+?[\d\s\-\(\)]{10,})/i)
+  if (phoneMatch) {
+    sender.phone = phoneMatch[1].trim()
+  }
+  
+  // Extract name (usually at the beginning of CV)
+  const lines = cvText.split('\n').filter(line => line.trim().length > 0)
+  if (lines.length > 0) {
+    const firstLine = lines[0].trim()
+    // If first line doesn't contain email or phone, it's likely the name
+    if (!firstLine.includes('@') && !firstLine.match(/\d/)) {
+      sender.name = firstLine
+    }
+  }
+  
+  // Extract address (look for common address patterns)
+  const addressMatch = cvText.match(/(\d+\s+[A-Za-z\s]+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd)[^,\n]*)/i)
+  if (addressMatch) {
+    sender.address = addressMatch[1].trim()
+  }
+  
+  return sender
+}
 
 const worker = new Worker('generate', async (job: Job) => {
   const { jobId, filePath, jobUrl, jobText, customQuestion } = job.data
@@ -243,39 +289,27 @@ CRITICAL: You must return ONLY valid JSON. Complete the entire structure includi
     // Set longer timeout for page operations
     page.setDefaultTimeout(60000)
     
-    // Simple HTML template for cover letter with random question
-    const coverHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <style>
-            body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
-            .cover-letter { max-width: 800px; margin: 0 auto; }
-            .header { margin-bottom: 30px; }
-            .content { white-space: pre-wrap; margin-bottom: 30px; }
-            .question-section { margin-top: 40px; padding: 20px; background-color: #f5f5f5; border-radius: 8px; }
-            .question-title { font-weight: bold; color: #333; margin-bottom: 10px; }
-            .question-text { font-style: italic; color: #666; margin-bottom: 15px; }
-            .answer-text { color: #333; }
-        </style>
-    </head>
-    <body>
-        <div class="cover-letter">
-            <div class="header">
-                <h2>Cover Letter</h2>
-            </div>
-            <div class="content">${parsed.coverLetter}</div>
-            
-            <div class="question-section">
-                <div class="question-title">Additional Question:</div>
-                <div class="question-text">${parsed.question}</div>
-                <div class="answer-text">${parsed.answer}</div>
-            </div>
-        </div>
-    </body>
-    </html>
-    `
+    // Extract sender information from CV
+    const senderInfo = extractSenderInfo(cvText)
+    
+    // Prepare template data
+    const templateData = {
+      sender: senderInfo,
+      date: new Date().toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      }),
+      recipient: {
+        name: 'Hiring Manager',
+        company: 'Company Name'
+      },
+      salutation: `Dear Hiring Manager,`,
+      body: parsed.coverLetter + `\n\n\nAdditional Question:\n${parsed.question}\n\nAnswer:\n${parsed.answer}`
+    }
+    
+    // Generate HTML using Handlebars template
+    const coverHtml = template(templateData)
     
     // Generate Cover Letter PDF
     await page.setContent(coverHtml, { waitUntil: 'domcontentloaded', timeout: 60000 })
