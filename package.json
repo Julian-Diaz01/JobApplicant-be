@@ -2,12 +2,11 @@
   "name": "jobapplicant-be",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "out/localChatServer.js",
   "scripts": {
     "build": "tsc",
-    "start": "node out/server.js",
-    "dev": "ts-node src/server.ts",
-    "dev-worker": "ts-node src/worker.ts",
+    "start": "node out/localChatServer.js",
+    "dev": "ts-node src/localChatServer.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

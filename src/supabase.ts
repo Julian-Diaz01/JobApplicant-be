@@ -15,130 +15,54 @@ if (!supabaseKey || supabaseKey === 'your-anon-key') {
 export const supabase = createClient(supabaseUrl, supabaseKey)
 
 // Database types
-export interface JobRecord {
+export interface Question {
   id?: string
-  job_id: string
+  question_text: string
+  question_type?: 'general' | 'cover_letter' | 'revision'
   company_name?: string
-  job_title?: string
-  job_url?: string
-  job_description?: string
-  cv_file_name?: string
-  status: 'pending' | 'processing' | 'completed' | 'failed'
-  progress: number
-  current_step?: string
-  cover_letter_json?: any
-  cover_letter_pdf_url?: string
-  random_question?: string
-  random_answer?: string
-  error_message?: string
   created_at?: string
-  updated_at?: string
-  completed_at?: string
 }
 
 // Database operations
-export class JobDatabase {
-  // Create a new job record
-  static async createJob(jobData: Partial<JobRecord>): Promise<JobRecord | null> {
+export class QuestionDatabase {
+  // Save a question for analytics
+  static async saveQuestion(questionData: Partial<Question>): Promise<Question | null> {
     try {
       const { data, error } = await supabase
-        .from('jobs')
-        .insert([jobData])
+        .from('questions')
+        .insert([questionData])
         .select()
         .single()
 
       if (error) {
-        console.error('Error creating job:', error)
+        console.error('Error saving question:', error)
         return null
       }
 
       return data
     } catch (error) {
-      console.error('Error creating job:', error)
+      console.error('Error saving question:', error)
       return null
     }
   }
 
-  // Update job status and progress
-  static async updateJob(jobId: string, updates: Partial<JobRecord>): Promise<JobRecord | null> {
+  // Get all questions (for admin purposes)
+  static async getAllQuestions(): Promise<Question[]> {
     try {
       const { data, error } = await supabase
-        .from('jobs')
-        .update(updates)
-        .eq('job_id', jobId)
-        .select()
-        .single()
-
-      if (error) {
-        console.error('Error updating job:', error)
-        return null
-      }
-
-      return data
-    } catch (error) {
-      console.error('Error updating job:', error)
-      return null
-    }
-  }
-
-  // Get job by job_id
-  static async getJob(jobId: string): Promise<JobRecord | null> {
-    try {
-      const { data, error } = await supabase
-        .from('jobs')
-        .select('*')
-        .eq('job_id', jobId)
-        .single()
-
-      if (error) {
-        console.error('Error getting job:', error)
-        return null
-      }
-
-      return data
-    } catch (error) {
-      console.error('Error getting job:', error)
-      return null
-    }
-  }
-
-  // Get all jobs (for admin purposes)
-  static async getAllJobs(): Promise<JobRecord[]> {
-    try {
-      const { data, error } = await supabase
-        .from('jobs')
+        .from('questions')
         .select('*')
         .order('created_at', { ascending: false })
 
       if (error) {
-        console.error('Error getting all jobs:', error)
+        console.error('Error getting all questions:', error)
         return []
       }
 
       return data || []
     } catch (error) {
-      console.error('Error getting all jobs:', error)
+      console.error('Error getting all questions:', error)
       return []
-    }
-  }
-
-  // Delete job
-  static async deleteJob(jobId: string): Promise<boolean> {
-    try {
-      const { error } = await supabase
-        .from('jobs')
-        .delete()
-        .eq('job_id', jobId)
-
-      if (error) {
-        console.error('Error deleting job:', error)
-        return false
-      }
-
-      return true
-    } catch (error) {
-      console.error('Error deleting job:', error)
-      return false
     }
   }
 }
