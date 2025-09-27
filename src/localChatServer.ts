@@ -323,80 +323,6 @@ app.post('/chat/message', async (req, res) => {
   }
 })
 
-// Generate PDF for cover letter
-app.post('/chat/generate-pdf', async (req, res) => {
-  const { session, coverLetter } = req.body
-
-  if (!session || !coverLetter) {
-    return res.status(400).json({ error: 'Session and cover letter are required' })
-  }
-
-  try {
-    // Check if PDF already exists
-    const filePath = path.resolve(`out/cover-${session.session_id}.pdf`)
-    if (fs.existsSync(filePath)) {
-      return res.json({ 
-        success: true, 
-        message: 'PDF already exists',
-        downloadUrl: `/chat/download-pdf/${session.session_id}`
-      })
-    }
-
-    // Generate PDF
-    console.log(`Generating PDF for session ${session.session_id}...`)
-    await generateCoverLetterPDF(session.session_id, coverLetter, session.cv_text || '')
-
-    res.json({ 
-      success: true, 
-      message: 'PDF generated successfully',
-      downloadUrl: `/chat/download-pdf/${session.session_id}`
-    })
-
-  } catch (error) {
-    console.error('Error generating PDF:', error)
-    res.status(500).json({ 
-      error: 'Failed to generate PDF',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    })
-  }
-})
-
-// Download PDF
-app.get('/chat/download-pdf/:sessionId', async (req, res) => {
-  const sessionId = req.params.sessionId
-
-  try {
-    const filePath = path.resolve(`out/cover-${sessionId}.pdf`)
-    
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'PDF not found. Please generate it first.' })
-    }
-
-    res.download(filePath, `cover-letter-${sessionId}.pdf`)
-
-  } catch (error) {
-    console.error('Error downloading PDF:', error)
-    res.status(500).json({ 
-      error: 'Failed to download PDF',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    })
-  }
-})
-
-// Get all questions (for admin purposes)
-app.get('/questions', async (req, res) => {
-  try {
-    const questions = await QuestionDatabase.getAllQuestions()
-    res.json({
-      success: true,
-      questions
-    })
-  } catch (error) {
-    console.error('Error getting questions:', error)
-    res.status(500).json({ error: 'Failed to get questions' })
-  }
-})
-
 // API documentation
 app.get('/', (req, res) => {
   res.json({ 
@@ -407,22 +333,15 @@ app.get('/', (req, res) => {
       health: 'GET /health',
       startChat: 'POST /chat/start (multipart/form-data with cv file + jobUrl/jobText)',
       sendMessage: 'POST /chat/message (with session and message)',
-      generatePdf: 'POST /chat/generate-pdf (with session and coverLetter)',
-      downloadPdf: 'GET /chat/download-pdf/:sessionId',
-      getQuestions: 'GET /questions'
     },
     usage: {
       step1: 'POST /chat/start with cv file and jobUrl or jobText',
-      step2: 'POST /chat/message to chat with AI (session stays local)',
       step3: 'POST /chat/generate-pdf to create PDF from cover letter',
-      step4: 'GET /chat/download-pdf/:sessionId to download'
     },
     features: {
       privacy: 'All chat data stays local, only questions saved to database',
       interactive: 'Real-time chat with AI for cover letter assistance',
       revisions: 'Multiple revisions and iterations',
-      pdf: 'Generate PDF from cover letter',
-      analytics: 'Questions saved for analytics only'
     }
   });
 });
